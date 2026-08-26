@@ -19,7 +19,8 @@ jobs:
       - name: Reconstruct Android source
         shell: bash
         run: |
-          base64 --decode .android-build/v2/android-src.b64 > /tmp/android-source.tar.gz
+          cat .android-build/v2parts/part* > /tmp/android-source.b64
+          base64 --decode /tmp/android-source.b64 > /tmp/android-source.tar.gz
           echo '48628c1fd12600fab6a92759e3f0b8b5fdd190d834ffb1571e1b40a68ea991f9  /tmp/android-source.tar.gz' | sha256sum --check
           tar -xzf /tmp/android-source.tar.gz
       - uses: actions/setup-java@v4
