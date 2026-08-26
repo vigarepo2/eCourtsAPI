@@ -23,13 +23,17 @@ jobs:
           base64 --decode /tmp/android-source.b64 > /tmp/android-source.tar.gz
           echo '9a870dbadb1d7159856cca01d91534074407c9795062ebe0d305202d3a866b18  /tmp/android-source.tar.gz' | sha256sum --check
           tar -xzf /tmp/android-source.tar.gz
+      - name: Pin stable Android SDK
+        run: |
+          sed -i 's/compileSdk = 37/compileSdk = 36/' android-client/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' android-client/app/build.gradle.kts
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK
-        run: yes | sdkmanager --licenses >/dev/null && sdkmanager 'platforms;android-37' 'build-tools;36.0.0'
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
