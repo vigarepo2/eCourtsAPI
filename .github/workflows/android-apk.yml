@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify live eCourts 4.0 API
+        run: node .android-build/live-ecourts-4-test.mjs
       - name: Reconstruct Android source
         shell: bash
         run: |
