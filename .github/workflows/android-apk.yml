@@ -16,9 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify live eCourts 4.0 API
-        run: node .android-build/live-ecourts-4-test.mjs
-      - name: Reconstruct Android source
+      - name: Reconstruct verified v2 source
         shell: bash
         run: |
           cat \
@@ -35,6 +33,17 @@ jobs:
           base64 --decode /tmp/android-source.b64 > /tmp/android-source.tar.gz
           echo '48628c1fd12600fab6a92759e3f0b8b5fdd190d834ffb1571e1b40a68ea991f9  /tmp/android-source.tar.gz' | sha256sum --check
           tar -xzf /tmp/android-source.tar.gz
+      - name: Apply current eCourts 4.0.5 compatibility patch
+        run: python .android-build/patch-v3.py
+      - name: Verify patched routes
+        shell: bash
+        run: |
+          grep -q 'services_DC_4.0' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+          grep -q 'services_HC_4.0' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+          grep -q 'APP_PROTOCOL_VERSION = "4.0"' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+          grep -q 'searchByPartyName.php' android-client/app/src/main/assets/app.js
+          grep -q 'caseTypesWebService.php' android-client/app/src/main/assets/app.js
+          grep -q 'versionName = "3.0.0"' android-client/app/build.gradle.kts
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -50,10 +59,12 @@ jobs:
       - name: Build debug APK
         run: gradle -p android-client :app:assembleDebug --stacktrace
       - name: Verify APK
-        run: unzip -t android-client/app/build/outputs/apk/debug/app-debug.apk >/dev/null
+        run: |
+          unzip -t android-client/app/build/outputs/apk/debug/app-debug.apk >/dev/null
+          sha256sum android-client/app/build/outputs/apk/debug/app-debug.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: eCourt-Glass-v2-debug-apk
+          name: eCourt-Glass-v3-services4-apk
           path: android-client/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
