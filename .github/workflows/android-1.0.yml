@@ -33,7 +33,6 @@ jobs:
           DB="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/CaseDb.java"
           API="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java"
           BRIDGE="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java"
-          MAIN="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/MainActivity.java"
           JS="$ROOT/app/src/main/assets/app.js"
           HTML="$ROOT/app/src/main/assets/index.html"
           grep -q 'versionCode = 100' "$ROOT/app/build.gradle.kts"
@@ -55,7 +54,7 @@ jobs:
           grep -q 'confirmExportCnrs' "$JS"
           grep -q 'saveCaseMetadata' "$JS"
           grep -q 'testConnection' "$JS"
-          grep -q 'startNewSession' "$JS"
+          grep -q 'clearSession' "$JS"
           grep -q 'calendar' "$JS"
           grep -q 'FIR' "$JS"
           node --check "$JS"
@@ -100,7 +99,7 @@ jobs:
           grep -q 'confirmExportCnrs' /tmp/app.js
           grep -q 'saveCaseMetadata' /tmp/app.js
           grep -q 'testConnection' /tmp/app.js
-          grep -q 'startNewSession' /tmp/app.js
+          grep -q 'clearSession' /tmp/app.js
           grep -q 'downloadOrder' /tmp/app.js
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
