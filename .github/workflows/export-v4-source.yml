@@ -1,0 +1,42 @@
+name: Export eCourt Glass v4 Source
+
+on:
+  push:
+    branches: [android-ecourts-client]
+    paths:
+      - '.github/workflows/export-v4-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          cat \
+            .android-build/v4src/part00 \
+            .android-build/v4src/part01 \
+            .android-build/v4src/part02 \
+            .android-build/v4src/part03 \
+            .android-build/v4src/part04 \
+            .android-build/v4src/part05 \
+            .android-build/v4src/part06 \
+            .android-build/v4src/part07 \
+            .android-build/v4src/part08 \
+            .android-build/v4src/part09 > /tmp/ecourt-v4.b64
+          base64 --decode /tmp/ecourt-v4.b64 > /tmp/ecourt-v4.tar.gz
+          echo 'e6db9ed91f53e82591dc74bbcbf39ce1f463e7ae7fdb6b2939bc9b50e653e623  /tmp/ecourt-v4.tar.gz' | sha256sum --check
+          tar -xzf /tmp/ecourt-v4.tar.gz
+          sed -i 's/SocketTimeoutException | IOException/IOException/' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+          tar -czf /tmp/eCourt-Glass-v4-source.tar.gz android-client
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: eCourt-Glass-v4-source
+          path: /tmp/eCourt-Glass-v4-source.tar.gz
+          if-no-files-found: error
