@@ -1,0 +1,31 @@
+name: Export verified v7 source
+
+on:
+  push:
+    branches: [android-ecourts-client]
+    paths: ['.github/workflows/export-v7-source.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact v7 source
+        shell: bash
+        run: |
+          cat .v7direct/part00 .v7direct/part01 .v7direct/part02a .v7direct/part03 .v7direct/tail00 .v7direct/tail01 .v7direct/tail02 .v7direct/tail03 > /tmp/v7.b64
+          echo '96c0433d7cf15b3b41667ce3a1d2e06f281d9dc5daa38e1ff9e2700827ad0dfb  /tmp/v7.b64' | sha256sum --check
+          base64 --decode /tmp/v7.b64 > /tmp/v7.tar.gz
+          echo 'c0806bf41f4b50e48821fa23c95b3f737a81a9b7884d542a320c1c895ecff40f  /tmp/v7.tar.gz' | sha256sum --check
+          tar -xzf /tmp/v7.tar.gz
+          find android-client -type f -print | sort
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecourt-glass-v7-source-tree
+          path: android-client
+          if-no-files-found: error
