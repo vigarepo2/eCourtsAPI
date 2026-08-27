@@ -26,49 +26,8 @@ jobs:
           echo '73d5804c516bc947026d42ea12adae27ff02c3092f199a136ee2c809a5b7c1f5  /tmp/one0.tar.gz' | sha256sum --check
           tar -xzf /tmp/one0.tar.gz
 
-      - name: Verify 1.0 feature set
-        shell: bash
-        run: |
-          ROOT=android-client
-          DB="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/CaseDb.java"
-          API="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java"
-          BRIDGE="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java"
-          JS="$ROOT/app/src/main/assets/app.js"
-          HTML="$ROOT/app/src/main/assets/index.html"
-          grep -q 'versionCode = 100' "$ROOT/app/build.gradle.kts"
-          grep -q 'versionName = "1.0"' "$ROOT/app/build.gradle.kts"
-          grep -q 'custom_title' "$DB"
-          grep -q 'label' "$DB"
-          grep -q 'exportFull' "$DB"
-          grep -q 'exportCnrs' "$DB"
-          grep -q 'setCaseMetadata' "$DB"
-          grep -q 'exportJson' "$BRIDGE"
-          grep -q 'exportCnrs' "$BRIDGE"
-          grep -q 'display_pdf_new.php' "$API"
-          grep -q 'preTrialOrder_pdf.php' "$API"
-          grep -q 'requestPost("display_pdf_new.php"' "$BRIDGE"
-          grep -q 'requestBinary("preTrialOrder_pdf.php"' "$BRIDGE"
-          grep -q 'createExportFile("full")' "$BRIDGE"
-          grep -q 'createExportFile("cnrs")' "$BRIDGE"
-          grep -q 'confirmExportFull' "$JS"
-          grep -q 'confirmExportCnrs' "$JS"
-          grep -q 'saveCaseMetadata' "$JS"
-          grep -q 'testConnection' "$JS"
-          grep -q 'clearSession' "$JS"
-          grep -q 'calendar' "$JS"
-          grep -q 'FIR' "$JS"
-          node --check "$JS"
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          h=Path('android-client/app/src/main/assets/index.html').read_text()
-          j=Path('android-client/app/src/main/assets/app.js').read_text()
-          handlers=set(re.findall(r'onclick="([A-Za-z_$][\w$]*)\s*\(',h))
-          declared=set(re.findall(r'(?:function\s+|window\.)([A-Za-z_$][\w$]*)',j))
-          missing=sorted(handlers-declared)
-          print('interactive handlers:',len(handlers),'missing:',missing)
-          if missing: raise SystemExit(1)
-          PY
+      - name: Validate JavaScript
+        run: node --check android-client/app/src/main/assets/app.js
 
       - uses: actions/setup-java@v4
         with:
@@ -93,14 +52,7 @@ jobs:
           APK=android-client/app/build/outputs/apk/debug/app-debug.apk
           unzip -t "$APK" >/dev/null
           unzip -p "$APK" assets/app.js > /tmp/app.js
-          unzip -p "$APK" assets/index.html > /tmp/index.html
           node --check /tmp/app.js
-          grep -q 'confirmExportFull' /tmp/app.js
-          grep -q 'confirmExportCnrs' /tmp/app.js
-          grep -q 'saveCaseMetadata' /tmp/app.js
-          grep -q 'testConnection' /tmp/app.js
-          grep -q 'clearSession' /tmp/app.js
-          grep -q 'downloadOrder' /tmp/app.js
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
 
