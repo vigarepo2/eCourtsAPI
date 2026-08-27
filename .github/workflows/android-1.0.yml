@@ -37,6 +37,19 @@ jobs:
           xz -dc /tmp/final.patch.xz > /tmp/final.patch
           patch -d android-client -p1 --forward --batch < /tmp/final.patch
 
+      - name: Apply Java 11 compile correction
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java')
+          s=p.read_text()
+          old='replaceAll("\\s+", " ")'
+          new='replaceAll("\\\\s+", " ")'
+          assert old in s, 'expected Java regex source not found'
+          p.write_text(s.replace(old,new))
+          PY
+
       - name: Validate 1.0 source and UI
         shell: bash
         run: |
@@ -51,6 +64,7 @@ jobs:
           grep -q 'roundTripPost' "$API"
           grep -q 'uidOnly' "$API"
           grep -q 'bodyObj.put("params", orderFields)' "$API"
+          grep -Fq 'replaceAll("\\s+", " ")' "$API"
           grep -q 'display_pdf_new.php' "$BRIDGE"
           grep -q 'downloadDisplayOrder' "$BRIDGE"
           grep -q 'ISO_DATE' "$DB"
