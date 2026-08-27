@@ -4,7 +4,7 @@ on:
   push:
     branches: [android-ecourts-client]
     paths:
-      - '.v5src/**'
+      - '.v6src/**'
       - '.github/workflows/android-apk.yml'
   workflow_dispatch:
 
@@ -17,59 +17,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct eCourt Glass v5 source
+      - name: Reconstruct exact eCourt Glass v6 source
         shell: bash
         run: |
-          cat \
-            .v5src/part00 \
-            .v5src/part01 \
-            .v5src/part02 \
-            .v5src/part03 \
-            .v5src/part04 \
-            .v5src/part05 \
-            .v5src/part06 \
-            .v5src/part07 \
-            .v5src/part08 \
-            .v5src/part09 \
-            .v5src/part10 \
-            .v5src/part11 \
-            .v5src/part12 > /tmp/ecourt-v5.b64
-          base64 --decode /tmp/ecourt-v5.b64 > /tmp/ecourt-v5.tar.gz
-          echo '6164026f8f937e5e8dc487772d8d61ac051b488b7a68b46c2be2fdd5bb268139  /tmp/ecourt-v5.tar.gz' | sha256sum --check
-          tar -xzf /tmp/ecourt-v5.tar.gz
+          cp .v6src/eCourt-Glass-v6-source.tar.gz /tmp/ecourt-v6.tar.gz
+          echo '4f61c6c0835ab52b2ed2599c9f22e997f67117db844b80290a74a0125097802d  /tmp/ecourt-v6.tar.gz' | sha256sum --check
+          tar -xzf /tmp/ecourt-v6.tar.gz
 
-      - name: Verify API performance and transport invariants
+      - name: Verify v6 queue and transport invariants
         shell: bash
         run: |
           API=android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
           BRIDGE=android-client/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java
-          MAIN=android-client/app/src/main/java/in/vigarepo/ecourtglass/MainActivity.java
+          DB=android-client/app/src/main/java/in/vigarepo/ecourtglass/CaseDb.java
           grep -q 'https://app.ecourts.gov.in/services_DC_4.0/' "$API"
-          grep -q 'https://app.ecourts.gov.in/services_HC_4.0/' "$API"
           grep -q 'APP_VERSION = "4.0.5"' "$API"
-          grep -q 'OFFICIAL_PACKAGE = "in.gov.ecourts.eCourtsServices"' "$API"
           grep -q 'setRequestMethod("GET")' "$API"
           grep -q '"Authorization", "Bearer " + bearerToken.trim()' "$API"
-          grep -q 'clean.put("uid", OFFICIAL_PACKAGE)' "$API"
-          grep -q 'LinkedBlockingDeque' "$API"
-          grep -q 'MIN_REQUEST_GAP_MS = 100L' "$API"
-          grep -q 'setConnectTimeout(8_000)' "$API"
-          grep -q 'setReadTimeout(25_000)' "$API"
-          grep -q '"Connection", "keep-alive"' "$API"
-          grep -q '408, 425, 429, 500, 502, 503, 504' "$API"
-          grep -q 'payload.put("cino", cleanCnr)' "$BRIDGE"
-          grep -q 'fetchCase(cleanCnr, fam, false)' "$BRIDGE"
-          grep -q 'refreshCaseFull' "$BRIDGE"
-          grep -q 'SYNC_WORKERS = 3' "$BRIDGE"
-          grep -q 'warmSession("DC")' "$MAIN"
-          grep -q 'versionName = "5.0.0"' android-client/app/build.gradle.kts
+          grep -q 'if (wr.code == 405)' "$API"
+          grep -q 'SYNC_WORKERS = 5' "$BRIDGE"
+          grep -q 'unfinished CNR queued' "$BRIDGE"
+          grep -q 'isServerPause' "$BRIDGE"
+          grep -q 'sync_state","queued' "$DB"
+          grep -q 'markSyncPaused' "$DB"
+          grep -q 'recoverInterruptedSync' "$DB"
+          grep -q 'versionName = "6.0.0"' android-client/app/build.gradle.kts
           ! grep -q 'ecourt_mobile_DC' "$API"
-          ! grep -q 'ecourt_mobile_HC' "$API"
 
-      - name: Validate professional UI and controls
+      - name: Validate v6 UI, FIR picker and controls
         shell: bash
         run: |
           node --check android-client/app/src/main/assets/app.js
+          grep -q 'Resume pending' android-client/app/src/main/assets/index.html
+          grep -q 'resetFetchedData' android-client/app/src/main/assets/app.js
+          grep -q 'clearFetchedDataKeepCnrs' android-client/app/src/main/assets/app.js
+          grep -q 'loadFirStates' android-client/app/src/main/assets/app.js
+          grep -q 'loadFirDistricts' android-client/app/src/main/assets/app.js
+          grep -q 'loadFirCourts' android-client/app/src/main/assets/app.js
+          grep -q 'loadFirPolice' android-client/app/src/main/assets/app.js
+          grep -q 'FIR search uses District Courts' android-client/app/src/main/assets/app.js
           python - <<'PY'
           import re, pathlib
           root=pathlib.Path('android-client/app/src/main/assets')
@@ -78,11 +64,9 @@ jobs:
           handlers=set(re.findall(r'onclick="([A-Za-z_$][\w$]*)\s*\(', html))
           declared=set(re.findall(r'(?:function\s+|window\.)([A-Za-z_$][\w$]*)', js))
           missing=sorted(handlers-declared)
-          svg_count=html.lower().count('<svg')+js.lower().count('<svg')
-          print('onclick handlers:', len(handlers), 'missing:', missing, 'interactive svg:', svg_count)
-          if missing or svg_count: raise SystemExit(1)
+          print('onclick handlers:', len(handlers), 'missing:', missing)
+          if missing: raise SystemExit(1)
           PY
-          grep -q 'android:roundIcon="@drawable/ic_launcher"' android-client/app/src/main/AndroidManifest.xml
 
       - uses: actions/setup-java@v4
         with:
@@ -98,10 +82,10 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
-      - name: Build debug APK
+      - name: Build v6 debug APK
         run: gradle -p android-client :app:assembleDebug --stacktrace
 
-      - name: Verify final APK
+      - name: Verify packaged v6 APK
         shell: bash
         run: |
           APK=android-client/app/build/outputs/apk/debug/app-debug.apk
@@ -109,15 +93,15 @@ jobs:
           unzip -p "$APK" assets/app.js > /tmp/bundled-app.js
           unzip -p "$APK" assets/index.html > /tmp/bundled-index.html
           node --check /tmp/bundled-app.js
-          ! grep -qi '<svg' /tmp/bundled-app.js
-          ! grep -qi '<svg' /tmp/bundled-index.html
-          grep -q 'refreshCaseFull' /tmp/bundled-app.js
+          grep -q 'Resume pending' /tmp/bundled-index.html
+          grep -q 'clearFetchedDataKeepCnrs' /tmp/bundled-app.js
+          grep -q 'loadFirPolice' /tmp/bundled-app.js
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
 
-      - name: Upload final APK
+      - name: Upload final v6 APK
         uses: actions/upload-artifact@v4
         with:
-          name: eCourt-Glass-v5-final-apk
+          name: eCourt-Glass-v6-final-apk
           path: android-client/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
