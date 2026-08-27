@@ -1,4 +1,4 @@
-name: Export eCourt Glass v4 Source
+name: Export eCourt Glass v5 Source
 
 on:
   push:
@@ -19,24 +19,26 @@ jobs:
         shell: bash
         run: |
           cat \
-            .android-build/v4src/part00 \
-            .android-build/v4src/part01 \
-            .android-build/v4src/part02 \
-            .android-build/v4src/part03 \
-            .android-build/v4src/part04 \
-            .android-build/v4src/part05 \
-            .android-build/v4src/part06 \
-            .android-build/v4src/part07 \
-            .android-build/v4src/part08 \
-            .android-build/v4src/part09 > /tmp/ecourt-v4.b64
-          base64 --decode /tmp/ecourt-v4.b64 > /tmp/ecourt-v4.tar.gz
-          echo 'e6db9ed91f53e82591dc74bbcbf39ce1f463e7ae7fdb6b2939bc9b50e653e623  /tmp/ecourt-v4.tar.gz' | sha256sum --check
-          tar -xzf /tmp/ecourt-v4.tar.gz
-          sed -i 's/SocketTimeoutException | IOException/IOException/' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
-          tar -czf /tmp/eCourt-Glass-v4-source.tar.gz android-client
+            .v5src/part00 \
+            .v5src/part01 \
+            .v5src/part02 \
+            .v5src/part03 \
+            .v5src/part04 \
+            .v5src/part05 \
+            .v5src/part06 \
+            .v5src/part07 \
+            .v5src/part08 \
+            .v5src/part09 \
+            .v5src/part10 \
+            .v5src/part11 \
+            .v5src/part12 > /tmp/ecourt-v5.b64
+          base64 --decode /tmp/ecourt-v5.b64 > /tmp/ecourt-v5.tar.gz
+          echo '6164026f8f937e5e8dc487772d8d61ac051b488b7a68b46c2be2fdd5bb268139  /tmp/ecourt-v5.tar.gz' | sha256sum --check
+          tar -xzf /tmp/ecourt-v5.tar.gz
+          tar -czf /tmp/eCourt-Glass-v5-source.tar.gz android-client
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
-          name: eCourt-Glass-v4-source
-          path: /tmp/eCourt-Glass-v4-source.tar.gz
+          name: eCourt-Glass-v5-source
+          path: /tmp/eCourt-Glass-v5-source.tar.gz
           if-no-files-found: error
