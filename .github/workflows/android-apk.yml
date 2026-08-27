@@ -16,55 +16,92 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct verified v2 source
+
+      - name: Reconstruct eCourt Glass v4 source
         shell: bash
         run: |
           cat \
-            .android-build/v2parts/part00 \
-            .android-build/v2parts/part01 \
-            .android-build/v2parts/part02 \
-            .android-build/v2parts/part03 \
-            .android-build/v2parts/part04 \
-            .android-build/v2parts/part05 \
-            .android-build/v2parts/part06a \
-            .android-build/v2parts/part06b \
-            .android-build/v2parts/part07 \
-            .android-build/v2parts/part08 > /tmp/android-source.b64
-          base64 --decode /tmp/android-source.b64 > /tmp/android-source.tar.gz
-          echo '48628c1fd12600fab6a92759e3f0b8b5fdd190d834ffb1571e1b40a68ea991f9  /tmp/android-source.tar.gz' | sha256sum --check
-          tar -xzf /tmp/android-source.tar.gz
-      - name: Apply current eCourts 4.0.5 compatibility patch
-        run: python .android-build/patch-v3.py
-      - name: Verify patched routes
+            .android-build/v4src/part00 \
+            .android-build/v4src/part01 \
+            .android-build/v4src/part02 \
+            .android-build/v4src/part03 \
+            .android-build/v4src/part04 \
+            .android-build/v4src/part05 \
+            .android-build/v4src/part06 \
+            .android-build/v4src/part07 \
+            .android-build/v4src/part08 \
+            .android-build/v4src/part09 > /tmp/ecourt-v4.b64
+          base64 --decode /tmp/ecourt-v4.b64 > /tmp/ecourt-v4.tar.gz
+          echo 'e6db9ed91f53e82591dc74bbcbf39ce1f463e7ae7fdb6b2939bc9b50e653e623  /tmp/ecourt-v4.tar.gz' | sha256sum --check
+          tar -xzf /tmp/ecourt-v4.tar.gz
+
+      - name: Verify transport and queue invariants
         shell: bash
         run: |
-          grep -q 'services_DC_4.0' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
-          grep -q 'services_HC_4.0' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
-          grep -q 'APP_PROTOCOL_VERSION = "4.0"' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
-          grep -q 'searchByPartyName.php' android-client/app/src/main/assets/app.js
-          grep -q 'caseTypesWebService.php' android-client/app/src/main/assets/app.js
-          grep -q 'versionName = "3.0.0"' android-client/app/build.gradle.kts
+          API=android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+          BRIDGE=android-client/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java
+          grep -q 'https://app.ecourts.gov.in/services_DC_4.0/' "$API"
+          grep -q 'https://app.ecourts.gov.in/services_HC_4.0/' "$API"
+          grep -q 'APP_VERSION = "4.0.5"' "$API"
+          grep -q 'OFFICIAL_PACKAGE = "in.gov.ecourts.eCourtsServices"' "$API"
+          grep -q 'setRequestMethod("GET")' "$API"
+          grep -q '"Authorization", "Bearer " + bearerToken.trim()' "$API"
+          grep -q 'clean.put("uid", OFFICIAL_PACKAGE)' "$API"
+          grep -q '408, 425, 429, 500, 502, 503, 504' "$API"
+          grep -q 'payload.put("cino", cleanCnr)' "$BRIDGE"
+          grep -q 'SYNC_WORKERS = 3' "$BRIDGE"
+          grep -q 'caseHistoryWebService.php' "$BRIDGE"
+          grep -q 'filingCaseHistory.php' "$BRIDGE"
+          ! grep -q 'ecourt_mobile_DC' "$API"
+          ! grep -q 'ecourt_mobile_HC' "$API"
+
+      - name: Validate UI assets and button handlers
+        shell: bash
+        run: |
+          node --check android-client/app/src/main/assets/app.js
+          python - <<'PY'
+          import re, pathlib
+          root=pathlib.Path('android-client/app/src/main/assets')
+          html=(root/'index.html').read_text()
+          js=(root/'app.js').read_text()
+          handlers=set(re.findall(r'onclick="([A-Za-z_$][\w$]*)\s*\(', html))
+          declared=set(re.findall(r'(?:function\s+|window\.)([A-Za-z_$][\w$]*)', js))
+          missing=sorted(handlers-declared)
+          print('onclick handlers:', len(handlers), 'missing:', missing)
+          if missing: raise SystemExit(1)
+          PY
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: android-actions/setup-android@v3
+
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-      - name: Validate web assets
-        run: node --check android-client/app/src/main/assets/app.js
+
       - name: Build debug APK
         run: gradle -p android-client :app:assembleDebug --stacktrace
-      - name: Verify APK
+
+      - name: Verify APK integrity and bundled UI
+        shell: bash
         run: |
-          unzip -t android-client/app/build/outputs/apk/debug/app-debug.apk >/dev/null
-          sha256sum android-client/app/build/outputs/apk/debug/app-debug.apk
+          APK=android-client/app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" >/dev/null
+          unzip -p "$APK" assets/app.js > /tmp/bundled-app.js
+          node --check /tmp/bundled-app.js
+          grep -q 'searchByPartyName.php' /tmp/bundled-app.js
+          grep -q 'caseTypesWebService.php' /tmp/bundled-app.js
+          sha256sum "$APK"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: eCourt-Glass-v3-services4-apk
+          name: eCourt-Glass-v4-services405-apk
           path: android-client/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
