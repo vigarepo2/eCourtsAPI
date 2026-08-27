@@ -1,0 +1,99 @@
+name: Build eCourt Glass v7 Final
+
+on:
+  push:
+    branches: [android-ecourts-client]
+    paths:
+      - '.v7direct/**'
+      - '.github/workflows/android-v7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact v7 source
+        shell: bash
+        run: |
+          cat .v7direct/part00 .v7direct/part01 .v7direct/part02a .v7direct/part03 .v7direct/part04fix > /tmp/v7.b64
+          echo '96c0433d7cf15b3b41667ce3a1d2e06f281d9dc5daa38e1ff9e2700827ad0dfb  /tmp/v7.b64' | sha256sum --check
+          base64 --decode /tmp/v7.b64 > /tmp/v7.tar.gz
+          echo 'c0806bf41f4b50e48821fa23c95b3f737a81a9b7884d542a320c1c895ecff40f  /tmp/v7.tar.gz' | sha256sum --check
+          tar -xzf /tmp/v7.tar.gz
+
+      - name: Verify v7 fixes
+        shell: bash
+        run: |
+          DB=android-client/app/src/main/java/in/vigarepo/ecourtglass/CaseDb.java
+          API=android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+          BRIDGE=android-client/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java
+          JS=android-client/app/src/main/assets/app.js
+          HTML=android-client/app/src/main/assets/index.html
+          grep -q 'versionName = "7.0.0"' android-client/app/build.gradle.kts
+          grep -q 'preTrialOrder_pdf.php' "$API"
+          grep -q 'requestBinary' "$API"
+          grep -q 'preTrialOrder_pdf.php' "$BRIDGE"
+          grep -q 'application/pdf' "$BRIDGE"
+          grep -q 'hearings' "$DB"
+          grep -q 'orders' "$DB"
+          grep -q 'yyyyMMdd' "$DB"
+          grep -q 'dd-MM-yyyy' "$DB"
+          grep -q 'yyyy-MM-dd' "$DB"
+          grep -q 'Hearings' "$JS"
+          grep -q 'Orders' "$JS"
+          node --check "$JS"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('android-client/app/src/main/assets/index.html').read_text()
+          j=Path('android-client/app/src/main/assets/app.js').read_text()
+          handlers=set(re.findall(r'onclick="([A-Za-z_$][\w$]*)\s*\(',h))
+          declared=set(re.findall(r'(?:function\s+|window\.)([A-Za-z_$][\w$]*)',j))
+          missing=sorted(handlers-declared)
+          print('handlers',len(handlers),'missing',missing)
+          if missing: raise SystemExit(1)
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Build v7 APK
+        run: gradle -p android-client :app:assembleDebug --stacktrace
+
+      - name: Verify packaged APK
+        shell: bash
+        run: |
+          APK=android-client/app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" >/dev/null
+          unzip -p "$APK" assets/app.js > /tmp/app.js
+          unzip -p "$APK" assets/index.html > /tmp/index.html
+          node --check /tmp/app.js
+          grep -q 'preTrialOrder_pdf.php' <(strings "$APK") || true
+          grep -q 'downloadOrder' /tmp/app.js
+          grep -q 'Hearings' /tmp/app.js
+          grep -q 'Orders' /tmp/app.js
+          sha256sum "$APK"
+          stat -c '%s bytes' "$APK"
+
+      - name: Upload v7 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: eCourt-Glass-v7-final-apk
+          path: android-client/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
