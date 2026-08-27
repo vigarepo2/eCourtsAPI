@@ -4,7 +4,7 @@ on:
   push:
     branches: [android-ecourts-client]
     paths:
-      - '.android-build/**'
+      - '.v5src/**'
       - '.github/workflows/android-apk.yml'
   workflow_dispatch:
 
@@ -17,43 +17,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct eCourt Glass v4 source
+      - name: Reconstruct eCourt Glass v5 source
         shell: bash
         run: |
           cat \
-            .android-build/v4src/part00 \
-            .android-build/v4src/part01 \
-            .android-build/v4src/part02 \
-            .android-build/v4src/part03 \
-            .android-build/v4src/part04 \
-            .android-build/v4src/part05 \
-            .android-build/v4src/part06 \
-            .android-build/v4src/part07 \
-            .android-build/v4src/part08 \
-            .android-build/v4src/part09 > /tmp/ecourt-v4.b64
-          base64 --decode /tmp/ecourt-v4.b64 > /tmp/ecourt-v4.tar.gz
-          echo 'e6db9ed91f53e82591dc74bbcbf39ce1f463e7ae7fdb6b2939bc9b50e653e623  /tmp/ecourt-v4.tar.gz' | sha256sum --check
-          tar -xzf /tmp/ecourt-v4.tar.gz
+            .v5src/part00 \
+            .v5src/part01 \
+            .v5src/part02 \
+            .v5src/part03 \
+            .v5src/part04 \
+            .v5src/part05 \
+            .v5src/part06 \
+            .v5src/part07 \
+            .v5src/part08 \
+            .v5src/part09 \
+            .v5src/part10 \
+            .v5src/part11 \
+            .v5src/part12 > /tmp/ecourt-v5.b64
+          base64 --decode /tmp/ecourt-v5.b64 > /tmp/ecourt-v5.tar.gz
+          echo '6164026f8f937e5e8dc487772d8d61ac051b488b7a68b46c2be2fdd5bb268139  /tmp/ecourt-v5.tar.gz' | sha256sum --check
+          tar -xzf /tmp/ecourt-v5.tar.gz
 
-      - name: Apply compile correctness fix
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java')
-          s=p.read_text()
-          old='catch (SocketTimeoutException | IOException e)'
-          if old not in s:
-              raise SystemExit('expected multi-catch source not found')
-          p.write_text(s.replace(old, 'catch (IOException e)'))
-          PY
-          ! grep -q 'SocketTimeoutException | IOException' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
-
-      - name: Verify transport and queue invariants
+      - name: Verify API performance and transport invariants
         shell: bash
         run: |
           API=android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
           BRIDGE=android-client/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java
+          MAIN=android-client/app/src/main/java/in/vigarepo/ecourtglass/MainActivity.java
           grep -q 'https://app.ecourts.gov.in/services_DC_4.0/' "$API"
           grep -q 'https://app.ecourts.gov.in/services_HC_4.0/' "$API"
           grep -q 'APP_VERSION = "4.0.5"' "$API"
@@ -61,15 +51,22 @@ jobs:
           grep -q 'setRequestMethod("GET")' "$API"
           grep -q '"Authorization", "Bearer " + bearerToken.trim()' "$API"
           grep -q 'clean.put("uid", OFFICIAL_PACKAGE)' "$API"
+          grep -q 'LinkedBlockingDeque' "$API"
+          grep -q 'MIN_REQUEST_GAP_MS = 100L' "$API"
+          grep -q 'setConnectTimeout(8000)' "$API"
+          grep -q 'setReadTimeout(25000)' "$API"
+          grep -q '"Connection", "keep-alive"' "$API"
           grep -q '408, 425, 429, 500, 502, 503, 504' "$API"
           grep -q 'payload.put("cino", cleanCnr)' "$BRIDGE"
+          grep -q 'fetchCase(cleanCnr, fam, false)' "$BRIDGE"
+          grep -q 'refreshCaseFull' "$BRIDGE"
           grep -q 'SYNC_WORKERS = 3' "$BRIDGE"
-          grep -q 'caseHistoryWebService.php' "$BRIDGE"
-          grep -q 'filingCaseHistory.php' "$BRIDGE"
+          grep -q 'warmSession("DC")' "$MAIN"
+          grep -q 'versionName = "5.0.0"' android-client/app/build.gradle.kts
           ! grep -q 'ecourt_mobile_DC' "$API"
           ! grep -q 'ecourt_mobile_HC' "$API"
 
-      - name: Validate UI assets and button handlers
+      - name: Validate professional UI and controls
         shell: bash
         run: |
           node --check android-client/app/src/main/assets/app.js
@@ -81,9 +78,11 @@ jobs:
           handlers=set(re.findall(r'onclick="([A-Za-z_$][\w$]*)\s*\(', html))
           declared=set(re.findall(r'(?:function\s+|window\.)([A-Za-z_$][\w$]*)', js))
           missing=sorted(handlers-declared)
-          print('onclick handlers:', len(handlers), 'missing:', missing)
-          if missing: raise SystemExit(1)
+          svg_count=html.lower().count('<svg')+js.lower().count('<svg')
+          print('onclick handlers:', len(handlers), 'missing:', missing, 'interactive svg:', svg_count)
+          if missing or svg_count: raise SystemExit(1)
           PY
+          grep -q 'android:roundIcon="@drawable/ic_launcher"' android-client/app/src/main/AndroidManifest.xml
 
       - uses: actions/setup-java@v4
         with:
@@ -102,20 +101,23 @@ jobs:
       - name: Build debug APK
         run: gradle -p android-client :app:assembleDebug --stacktrace
 
-      - name: Verify APK integrity and bundled UI
+      - name: Verify final APK
         shell: bash
         run: |
           APK=android-client/app/build/outputs/apk/debug/app-debug.apk
           unzip -t "$APK" >/dev/null
           unzip -p "$APK" assets/app.js > /tmp/bundled-app.js
+          unzip -p "$APK" assets/index.html > /tmp/bundled-index.html
           node --check /tmp/bundled-app.js
-          grep -q 'searchByPartyName.php' /tmp/bundled-app.js
-          grep -q 'caseTypesWebService.php' /tmp/bundled-app.js
+          ! grep -qi '<svg' /tmp/bundled-app.js
+          ! grep -qi '<svg' /tmp/bundled-index.html
+          grep -q 'refreshCaseFull' /tmp/bundled-app.js
           sha256sum "$APK"
+          stat -c '%s bytes' "$APK"
 
-      - name: Upload APK
+      - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: eCourt-Glass-v4-services405-apk
+          name: eCourt-Glass-v5-final-apk
           path: android-client/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
