@@ -1,0 +1,113 @@
+name: Build eCourt Glass 1.0 Final
+
+on:
+  push:
+    branches: [android-ecourts-client]
+    paths:
+      - '.one0src/**'
+      - '.github/workflows/android-1.0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct verified 1.0 source
+        shell: bash
+        run: |
+          cat .one0src/part00 .one0src/part01 .one0src/part02 .one0src/part03 .one0src/part04a .one0src/part04b .one0src/part04c .one0src/part05 .one0src/part06 > /tmp/one0.b64
+          echo 'd4e6aeb534ee99810865bd892314f1ec6f8c64eb832e1d47209468c33001ac4e  /tmp/one0.b64' | sha256sum --check
+          base64 --decode /tmp/one0.b64 > /tmp/one0.tar.gz
+          echo '73d5804c516bc947026d42ea12adae27ff02c3092f199a136ee2c809a5b7c1f5  /tmp/one0.tar.gz' | sha256sum --check
+          tar -xzf /tmp/one0.tar.gz
+
+      - name: Verify 1.0 feature set
+        shell: bash
+        run: |
+          ROOT=android-client
+          DB="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/CaseDb.java"
+          API="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java"
+          BRIDGE="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java"
+          MAIN="$ROOT/app/src/main/java/in/vigarepo/ecourtglass/MainActivity.java"
+          JS="$ROOT/app/src/main/assets/app.js"
+          HTML="$ROOT/app/src/main/assets/index.html"
+          grep -q 'versionCode = 100' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionName = "1.0"' "$ROOT/app/build.gradle.kts"
+          grep -q 'custom_title' "$DB"
+          grep -q 'label' "$DB"
+          grep -q 'exportFull' "$DB"
+          grep -q 'exportCnrs' "$DB"
+          grep -q 'setCaseMetadata' "$DB"
+          grep -q 'exportJson' "$BRIDGE"
+          grep -q 'exportCnrs' "$BRIDGE"
+          grep -q 'display_pdf_new.php' "$API"
+          grep -q 'preTrialOrder_pdf.php' "$API"
+          grep -q 'requestPost("display_pdf_new.php"' "$BRIDGE"
+          grep -q 'requestBinary("preTrialOrder_pdf.php"' "$BRIDGE"
+          grep -q 'createExportFile("full")' "$BRIDGE"
+          grep -q 'createExportFile("cnrs")' "$BRIDGE"
+          grep -q 'confirmExportFull' "$JS"
+          grep -q 'confirmExportCnrs' "$JS"
+          grep -q 'saveCaseMetadata' "$JS"
+          grep -q 'testConnection' "$JS"
+          grep -q 'startNewSession' "$JS"
+          grep -q 'calendar' "$JS"
+          grep -q 'FIR' "$JS"
+          node --check "$JS"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('android-client/app/src/main/assets/index.html').read_text()
+          j=Path('android-client/app/src/main/assets/app.js').read_text()
+          handlers=set(re.findall(r'onclick="([A-Za-z_$][\w$]*)\s*\(',h))
+          declared=set(re.findall(r'(?:function\s+|window\.)([A-Za-z_$][\w$]*)',j))
+          missing=sorted(handlers-declared)
+          print('interactive handlers:',len(handlers),'missing:',missing)
+          if missing: raise SystemExit(1)
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Build Android APK
+        run: gradle -p android-client :app:assembleDebug --stacktrace
+
+      - name: Verify packaged APK
+        shell: bash
+        run: |
+          APK=android-client/app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" >/dev/null
+          unzip -p "$APK" assets/app.js > /tmp/app.js
+          unzip -p "$APK" assets/index.html > /tmp/index.html
+          node --check /tmp/app.js
+          grep -q 'confirmExportFull' /tmp/app.js
+          grep -q 'confirmExportCnrs' /tmp/app.js
+          grep -q 'saveCaseMetadata' /tmp/app.js
+          grep -q 'testConnection' /tmp/app.js
+          grep -q 'startNewSession' /tmp/app.js
+          grep -q 'downloadOrder' /tmp/app.js
+          sha256sum "$APK"
+          stat -c '%s bytes' "$APK"
+
+      - name: Upload 1.0 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: eCourt-Glass-1.0-final-apk
+          path: android-client/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
