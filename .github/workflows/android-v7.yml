@@ -36,15 +36,18 @@ jobs:
           grep -q 'versionName = "7.0.0"' android-client/app/build.gradle.kts
           grep -q 'preTrialOrder_pdf.php' "$API"
           grep -q 'requestBinary' "$API"
+          grep -q "wr.bytes\[0\]=='%'" "$API"
           grep -q 'preTrialOrder_pdf.php' "$BRIDGE"
-          grep -q 'application/pdf' "$BRIDGE"
+          grep -q 'saveOrderPdf' "$BRIDGE"
           grep -q 'hearings' "$DB"
           grep -q 'orders' "$DB"
-          grep -q 'yyyyMMdd' "$DB"
-          grep -q 'dd-MM-yyyy' "$DB"
-          grep -q 'yyyy-MM-dd' "$DB"
+          grep -q 'ISO_DATE' "$DB"
+          grep -q 'DMY_DATE' "$DB"
+          grep -q 'COMPACT_DATE' "$DB"
+          grep -q 'normalizeDate' "$DB"
           grep -q 'Hearings' "$JS"
           grep -q 'Orders' "$JS"
+          grep -q 'downloadOrder' "$JS"
           node --check "$JS"
           python - <<'PY'
           from pathlib import Path
