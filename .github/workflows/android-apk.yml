@@ -4,7 +4,7 @@ on:
   push:
     branches: [android-ecourts-client]
     paths:
-      - '.v6src/**'
+      - '.v6direct/**'
       - '.github/workflows/android-apk.yml'
   workflow_dispatch:
 
@@ -20,7 +20,17 @@ jobs:
       - name: Reconstruct exact eCourt Glass v6 source
         shell: bash
         run: |
-          cp .v6src/eCourt-Glass-v6-source.tar.gz /tmp/ecourt-v6.tar.gz
+          cat \
+            .v6direct/part00 \
+            .v6direct/part01 \
+            .v6direct/part02 \
+            .v6direct/part03 \
+            .v6direct/part04 \
+            .v6direct/part05 \
+            .v6direct/part06 \
+            .v6direct/part07 > /tmp/ecourt-v6.b64
+          test "$(wc -c < /tmp/ecourt-v6.b64)" = "56448"
+          base64 --decode /tmp/ecourt-v6.b64 > /tmp/ecourt-v6.tar.gz
           echo '4f61c6c0835ab52b2ed2599c9f22e997f67117db844b80290a74a0125097802d  /tmp/ecourt-v6.tar.gz' | sha256sum --check
           tar -xzf /tmp/ecourt-v6.tar.gz
 
@@ -31,20 +41,21 @@ jobs:
           BRIDGE=android-client/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java
           DB=android-client/app/src/main/java/in/vigarepo/ecourtglass/CaseDb.java
           grep -q 'https://app.ecourts.gov.in/services_DC_4.0/' "$API"
+          grep -q 'https://app.ecourts.gov.in/services_HC_4.0/' "$API"
           grep -q 'APP_VERSION = "4.0.5"' "$API"
           grep -q 'setRequestMethod("GET")' "$API"
           grep -q '"Authorization", "Bearer " + bearerToken.trim()' "$API"
           grep -q 'if (wr.code == 405)' "$API"
           grep -q 'SYNC_WORKERS = 5' "$BRIDGE"
           grep -q 'unfinished CNR queued' "$BRIDGE"
-          grep -q 'isServerPause' "$BRIDGE"
-          grep -q 'sync_state","queued' "$DB"
+          grep -q 'isServerPauseMessage' "$BRIDGE"
+          grep -q 'cv.put("sync_state","queued")' "$DB"
           grep -q 'markSyncPaused' "$DB"
           grep -q 'recoverInterruptedSync' "$DB"
           grep -q 'versionName = "6.0.0"' android-client/app/build.gradle.kts
           ! grep -q 'ecourt_mobile_DC' "$API"
 
-      - name: Validate v6 UI, FIR picker and controls
+      - name: Validate v6 UI FIR picker and controls
         shell: bash
         run: |
           node --check android-client/app/src/main/assets/app.js
