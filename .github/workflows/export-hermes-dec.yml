@@ -1,0 +1,24 @@
+name: Export Hermes tooling
+
+on:
+  push:
+    branches: [android-ecourts-client]
+    paths: ['.github/workflows/export-hermes-dec.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch hermes-dec
+        run: git clone --depth 1 https://github.com/P1sec/hermes-dec.git /tmp/hermes-dec
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-dec-source
+          path: /tmp/hermes-dec
+          include-hidden-files: true
