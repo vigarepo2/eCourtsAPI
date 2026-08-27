@@ -5,6 +5,7 @@ on:
     branches: [android-ecourts-client]
     paths:
       - '.one0src/**'
+      - '.one0patch/**'
       - '.github/workflows/android-1.0.yml'
   workflow_dispatch:
 
@@ -17,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct verified 1.0 source
+      - name: Reconstruct verified base source
         shell: bash
         run: |
           cat .one0src/part00 .one0src/part01 .one0src/part02 .one0src/part03 .one0src/part04a .one0src/part04b .one0src/part04c .one0src/part05 .one0src/part06 > /tmp/one0.b64
@@ -26,8 +27,57 @@ jobs:
           echo '73d5804c516bc947026d42ea12adae27ff02c3092f199a136ee2c809a5b7c1f5  /tmp/one0.tar.gz' | sha256sum --check
           tar -xzf /tmp/one0.tar.gz
 
-      - name: Validate JavaScript
-        run: node --check android-client/app/src/main/assets/app.js
+      - name: Apply verified final 1.0 patch
+        shell: bash
+        run: |
+          cat .one0patch/part00 .one0patch/part01 .one0patch/part02 .one0patch/part03 > /tmp/final.patch.xz.b64
+          echo '2786bb80f35aaf79b49d1f8ed72095b00c624c3d709ec2b2a03488588ba4a55e  /tmp/final.patch.xz.b64' | sha256sum --check
+          base64 --decode /tmp/final.patch.xz.b64 > /tmp/final.patch.xz
+          echo '68bf16842c1afdc40c5dbd02574f05d46e72e051bcdc59592850b75597db803b  /tmp/final.patch.xz' | sha256sum --check
+          xz -dc /tmp/final.patch.xz > /tmp/final.patch
+          patch -d android-client -p1 --forward --batch < /tmp/final.patch
+
+      - name: Validate 1.0 source and UI
+        shell: bash
+        run: |
+          DB=android-client/app/src/main/java/in/vigarepo/ecourtglass/CaseDb.java
+          API=android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+          BRIDGE=android-client/app/src/main/java/in/vigarepo/ecourtglass/AppBridge.java
+          MAIN=android-client/app/src/main/java/in/vigarepo/ecourtglass/MainActivity.java
+          JS=android-client/app/src/main/assets/app.js
+          HTML=android-client/app/src/main/assets/index.html
+          grep -q 'versionName = "1.0"' android-client/app/build.gradle.kts
+          grep -q 'display_pdf_new.php' "$API"
+          grep -q 'roundTripPost' "$API"
+          grep -q 'uidOnly' "$API"
+          grep -q 'bodyObj.put("params", orderFields)' "$API"
+          grep -q 'display_pdf_new.php' "$BRIDGE"
+          grep -q 'downloadDisplayOrder' "$BRIDGE"
+          grep -q 'ISO_DATE' "$DB"
+          grep -q 'DMY_DATE' "$DB"
+          grep -q 'COMPACT_DATE' "$DB"
+          grep -q 'repairDerivedData' "$DB"
+          grep -q 'custom_title' "$DB"
+          grep -q 'setCaseMetadata' "$DB"
+          grep -q 'exportFull' "$DB"
+          grep -q 'exportCnrs' "$DB"
+          grep -q 'v1_dates_and_orders' "$MAIN"
+          grep -q 'Export complete cases' "$HTML"
+          grep -q 'Custom case title' "$JS"
+          grep -q 'Label' "$JS"
+          grep -q 'Private note' "$JS"
+          node --check "$JS"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('android-client/app/src/main/assets/index.html').read_text()
+          j=Path('android-client/app/src/main/assets/app.js').read_text()
+          handlers=set(re.findall(r'onclick="([A-Za-z_$][\w$]*)\s*\(',h))
+          declared=set(re.findall(r'(?:function\s+|window\.)([A-Za-z_$][\w$]*)',j))
+          missing=sorted(handlers-declared)
+          print('handlers',len(handlers),'missing',missing)
+          if missing: raise SystemExit(1)
+          PY
 
       - uses: actions/setup-java@v4
         with:
@@ -52,7 +102,13 @@ jobs:
           APK=android-client/app/build/outputs/apk/debug/app-debug.apk
           unzip -t "$APK" >/dev/null
           unzip -p "$APK" assets/app.js > /tmp/app.js
+          unzip -p "$APK" assets/index.html > /tmp/index.html
           node --check /tmp/app.js
+          grep -q 'confirmExportFull' /tmp/app.js
+          grep -q 'saveCaseMetadata' /tmp/app.js
+          grep -q 'downloadOrderNative' /tmp/app.js
+          grep -q 'Custom case title' /tmp/app.js
+          grep -q 'Export complete cases' /tmp/index.html
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
 
