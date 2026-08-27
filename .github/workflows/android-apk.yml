@@ -35,6 +35,20 @@ jobs:
           echo 'e6db9ed91f53e82591dc74bbcbf39ce1f463e7ae7fdb6b2939bc9b50e653e623  /tmp/ecourt-v4.tar.gz' | sha256sum --check
           tar -xzf /tmp/ecourt-v4.tar.gz
 
+      - name: Apply compile correctness fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java')
+          s=p.read_text()
+          old='catch (SocketTimeoutException | IOException e)'
+          if old not in s:
+              raise SystemExit('expected multi-catch source not found')
+          p.write_text(s.replace(old, 'catch (IOException e)'))
+          PY
+          ! grep -q 'SocketTimeoutException | IOException' android-client/app/src/main/java/in/vigarepo/ecourtglass/EcourtsApi.java
+
       - name: Verify transport and queue invariants
         shell: bash
         run: |
